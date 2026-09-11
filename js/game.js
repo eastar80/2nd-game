@@ -140,7 +140,7 @@ function reachablePegs(pegs) {
   for (let i = 0; i <= 48; i++) {
     const a = -MAX_ANGLE + (2 * MAX_ANGLE) * i / 48;
     const r = Physics.preview(LAUNCH.x, LAUNCH.y + 14, a, LAUNCH_SPEED, ORBS.stone,
-      pegs, { width: W, floorY: FLOOR_Y }, 40);
+      pegs, { width: W, floorY: FLOOR_Y }, Math.round(40 / Physics.TIME_SCALE));
     if (r.peg && !seen.has(r.peg.id)) { seen.add(r.peg.id); found.push(r.peg); }
   }
   return found;
@@ -764,7 +764,7 @@ function drawLauncher() {
 
 function drawAim() {
   const o = currentOrb();
-  const steps = hasRelic('scope') ? 90 : 34;
+  const steps = Math.round((hasRelic('scope') ? 90 : 34) / Physics.TIME_SCALE);
   const { pts, peg } = Physics.preview(LAUNCH.x, LAUNCH.y + 14, aimAngle, LAUNCH_SPEED, o,
     battle.pegs, { width: W, floorY: FLOOR_Y }, steps);
 
@@ -978,7 +978,8 @@ window.__peg = {
   previewHit: (angle) => {
     if (!battle || !battle.orbId) return null;
     const r = Physics.preview(LAUNCH.x, LAUNCH.y + 14, clamp(angle, -MAX_ANGLE, MAX_ANGLE),
-      LAUNCH_SPEED, currentOrb(), battle.pegs, { width: W, floorY: FLOOR_Y }, 40);
+      LAUNCH_SPEED, currentOrb(), battle.pegs, { width: W, floorY: FLOOR_Y },
+      Math.round(40 / Physics.TIME_SCALE));
     return r.peg ? { type: r.peg.type, y: r.peg.y } : null;
   },
 };
