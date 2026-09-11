@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>튕겨라, 구슬! — 페그 드롭 로그라이크</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <header id="hud">
+    <div class="hud-left">
+      <span class="label">층</span><b id="floorNum">1</b><span class="dim">/10</span>
+    </div>
+    <div class="hud-hp">
+      <div class="bar"><i id="hpFill"></i></div>
+      <span id="hpText">60 / 60</span>
+    </div>
+    <div class="hud-right" id="relicRow"></div>
+  </header>
+
+  <div id="enemyRow"></div>
+
+  <div id="stage">
+    <canvas id="board" width="480" height="560"></canvas>
+    <div id="overlay" class="hidden"></div>
+  </div>
+
+  <footer id="tray">
+    <div class="tray-orb">
+      <span id="orbDot" class="orb-dot"></span>
+      <div class="tray-text">
+        <b id="orbName">돌구슬</b>
+        <small id="orbDesc">평범하지만 믿음직한 기본 구슬.</small>
+      </div>
+    </div>
+    <div class="tray-stats">
+      <div><span class="label">덱</span><b id="deckCount">0</b></div>
+      <div><span class="label">누적</span><b id="accDmg">0</b></div>
+    </div>
+  </footer>
+</div>
+
+<script src="js/content.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
