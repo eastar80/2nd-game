@@ -64,6 +64,12 @@ html, body {
   transition: width .25s ease;
 }
 #hpText { font-size: 12px; color: var(--dim); min-width: 62px; text-align: right; }
+.hud-hp .bar.struck { animation: hpHit .4s ease; }
+@keyframes hpHit {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 84, 112, 0); transform: translateX(0); }
+  20% { box-shadow: 0 0 14px 3px rgba(255, 84, 112, .7); transform: translateX(-3px); }
+  60% { transform: translateX(3px); }
+}
 
 .hud-right { display: flex; gap: 4px; flex-wrap: wrap; max-width: 120px; justify-content: flex-end; }
 .relic {
@@ -98,6 +104,51 @@ html, body {
   75% { transform: translateX(5px); }
 }
 
+/* ---------- 상태 표시줄: 지금 무슨 일이 일어나는지 한 줄로 ---------- */
+#statusLine {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: var(--dim);
+  text-align: center;
+  min-height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  transition: color .2s ease, border-color .2s ease;
+}
+#statusLine.charging { color: var(--text); border-color: #4a5a9e; }
+#statusLine.impact { color: var(--accent); border-color: var(--accent); }
+#statusLine.danger { color: #ff8fa3; border-color: var(--hp); }
+#statusLine b { font-family: var(--font-display); font-size: 15px; margin: 0 2px; }
+#statusLine .mult { color: var(--accent); }
+
+/* ---------- 충전이 적에게 날아가는 투사체 ---------- */
+.projectile {
+  position: fixed;
+  z-index: 50;
+  display: grid; place-items: center;
+  min-width: 46px; height: 46px; padding: 0 10px;
+  border-radius: 23px;
+  background: linear-gradient(135deg, #ffd43b, #ff8a5c);
+  color: #2a1a00;
+  font-family: var(--font-display);
+  font-size: 19px;
+  box-shadow: 0 0 22px rgba(255, 180, 60, .75);
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(.4);
+  transition: transform .42s cubic-bezier(.4, 0, .9, .55), opacity .12s ease;
+}
+.projectile.fly { transform: translate(-50%, -50%) translate(var(--dx), var(--dy)) scale(1); }
+.projectile.land { opacity: 0; }
+
+.enemy.struck { animation: struck .34s ease; }
+@keyframes struck {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,212,59,.8); }
+  30% { transform: scale(1.07); box-shadow: 0 0 26px 6px rgba(255,212,59,.55); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,212,59,0); }
+}
+
 /* ---------- Stage ---------- */
 #stage { position: relative; }
 #board {
@@ -120,7 +171,14 @@ html, body {
 .tray-text { min-width: 0; }
 .tray-text b { display: block; font-size: 13px; }
 .tray-text small { display: block; font-size: 11px; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tray-stats { display: flex; gap: 12px; text-align: right; }
+.tray-stats { display: flex; gap: 14px; text-align: right; }
+.tray-stats .charge b { color: var(--accent); font-size: 22px; line-height: 1.1; }
+.tray-stats .charge.bump b { animation: bump .22s ease; }
+@keyframes bump {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
 .tray-stats div { display: flex; flex-direction: column; }
 .tray-stats b { font-family: var(--font-display); font-size: 17px; }
 

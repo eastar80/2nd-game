@@ -24,6 +24,8 @@ let particles = [];
 let floaters = [];
 let shake = 0;
 let pegSeq = 0;
+let fastMode = false;        // true 면 애니메이션을 건너뛰고 즉시 처리 (테스트용)
+let slotFlash = [0, 0, 0, 0, 0];
 
 /* ------------------------------------------------------------------ 유틸 */
 
@@ -186,13 +188,16 @@ function startBattle() {
     acc: 0,
     shotDamage: 0,
     shotHits: 0,
+    lastExitX: W / 2,
   };
+  slotFlash = [0, 0, 0, 0, 0];
   battle.targetUid = battle.enemies[0].uid;
   refillDeck();
   drawOrb();
   phase = 'aim';
   renderEnemies();
   syncHud();
+  setStatus('페그를 맞힐수록 구슬에 힘이 쌓인다', '');
 }
 
 function refillDeck() {
@@ -262,9 +267,28 @@ function scoreHit(ball, peg) {
     syncHud();
   }
 
+  floaters.push({
+    x: peg.x, y: peg.y - 10,
+    text: '+' + d,
+    life: 0.75,
+    color: ball.crit ? '#ff9f43' : '#ffffff',
+    small: true,
+  });
+
   burst(peg.x, peg.y, ball.crit ? '#ff9f43' : orb.color, 6);
   Sfx.peg(battle.shotHits);
   shake = Math.min(shake + 1.1, 7);
+  bumpCharge();
+}
+
+/* 충전 숫자가 오를 때마다 눈에 띄게 튀어오르게 한다 */
+function bumpCharge() {
+  if (fastMode) return;
+  const el = $('accDmg').parentElement;
+  el.classList.remove('bump');
+  void el.offsetWidth;
+  el.classList.add('bump');
+  setStatus(`충전 <b>${battle.acc}</b> · ${battle.shotHits}히트 — 바닥 배율 구역으로 떨어뜨리자`, 'charging');
 }
 
 function explodeAt(peg, ball) {
@@ -305,47 +329,113 @@ function slotValue(i) {
 }
 
 function onBallExit(ball, stuck) {
+  battle.lastExitX = clamp(ball.x, 24, W - 24);
   if (ball.damage <= 0) return;
-  const mult = stuck ? 1 : slotValue(slotIndex(ball.x));
+
+  const idx = slotIndex(ball.x);
+  const mult = stuck ? 1 : slotValue(idx);
   const total = ball.damage * mult;
   battle.shotDamage += total;
-  if (mult > 1 && !stuck) {
-    floaters.push({ x: clamp(ball.x, 30, W - 30), y: SLOT_TOP - 6, text: '×' + mult, life: 1.2, color: '#ffd43b' });
+
+  if (!stuck) {
+    slotFlash[idx] = 1;
+    floaters.push({
+      x: clamp(ball.x, 72, W - 72), y: SLOT_TOP - 10,
+      text: `${ball.damage} × ${mult} = ${total}`,
+      life: 1.5, color: '#ffd43b',
+    });
+    Sfx.crit();
   }
 }
 
 function endShot() {
   let dmg = battle.shotDamage;
+  const bonuses = [];
 
-  if (hasRelic('chain') && battle.shotHits >= 8) dmg = Math.round(dmg * 1.5);
-  if (hasRelic('firstStrike') && battle.shots === 1) dmg *= 2;
-
-  const t = targetEnemy();
-  if (t && dmg > 0) damageEnemy(t, dmg);
+  if (hasRelic('chain') && battle.shotHits >= 8) { dmg = Math.round(dmg * 1.5); bonuses.push('연쇄 ×1.5'); }
+  if (hasRelic('firstStrike') && battle.shots === 1) { dmg *= 2; bonuses.push('선제 ×2'); }
 
   battle.pegs.forEach((p) => { if (p.hit) p.removed = true; });
   if (livePegs() < 16) battle.pegs = generatePegs();
 
+  const t = targetEnemy();
+  if (!t || dmg <= 0) {
+    setStatus('빗나갔다 — 페그를 하나도 맞히지 못했다', '');
+    afterImpact();
+    return;
+  }
+
+  phase = 'resolve';
+  setStatus(`충전 <b>${battle.acc}</b> × 배율${bonuses.length ? ' · ' + bonuses.join(' · ') : ''} → <b class="mult">${dmg}</b> 피해!`, 'impact');
+  sendImpact(t, dmg, afterImpact);
+}
+
+/* 쌓인 충전이 보드에서 빠져나와 적에게 날아가 꽂히는 연출.
+   시뮬레이션(fastMode)에서는 애니메이션 없이 즉시 처리한다. */
+function sendImpact(enemy, dmg, done) {
+  if (fastMode) { damageEnemy(enemy, dmg); done(); return; }
+
+  const card = $('enemyRow').querySelector(`[data-uid="${enemy.uid}"]`);
+  const rect = canvas.getBoundingClientRect();
+  if (!card) { damageEnemy(enemy, dmg); done(); return; }
+
+  const target = card.getBoundingClientRect();
+  const fromX = rect.left + (battle.lastExitX / W) * rect.width;
+  const fromY = rect.top + (SLOT_TOP / H) * rect.height;
+
+  const el = document.createElement('div');
+  el.className = 'projectile';
+  el.textContent = dmg;
+  el.style.left = fromX + 'px';
+  el.style.top = fromY + 'px';
+  el.style.setProperty('--dx', (target.left + target.width / 2 - fromX) + 'px');
+  el.style.setProperty('--dy', (target.top + target.height / 2 - fromY) + 'px');
+  document.body.appendChild(el);
+
+  requestAnimationFrame(() => el.classList.add('fly'));
+
+  setTimeout(() => {
+    el.classList.add('land');
+    damageEnemy(enemy, dmg);
+    card.classList.remove('struck');
+    void card.offsetWidth;
+    card.classList.add('struck');
+    setTimeout(() => el.remove(), 140);
+    setTimeout(done, 620);
+  }, 430);
+}
+
+function afterImpact() {
   if (!aliveEnemies().length) { winBattle(); return; }
 
-  enemyTurn();
+  const attackers = enemyTurn();
   if (phase === 'gameover') return;
   if (!aliveEnemies().length) { winBattle(); return; }
 
   drawOrb();
   phase = 'aim';
+
+  if (attackers.length) {
+    const total = attackers.reduce((a, b) => a + b.atk, 0);
+    const who = attackers.map((a) => a.name).join(', ');
+    setStatus(`${who}의 반격 — 체력 <b>${total}</b> 잃었다`, 'danger');
+  } else {
+    setStatus('페그를 맞힐수록 구슬에 힘이 쌓인다', '');
+  }
 }
 
 function damageEnemy(e, dmg) {
   e.hp -= dmg;
-  floaters.push({ x: W / 2, y: 70, text: '-' + dmg, life: 1.3, color: '#ff5470', big: true });
   Sfx.hitEnemy();
   shake = Math.max(shake, 6);
   if (e.hp <= 0) { e.hp = 0; e.dead = true; }
   renderEnemies();
 }
 
+/* 반격한 적들을 돌려주어 그 결과를 화면에 알릴 수 있게 한다 */
 function enemyTurn() {
+  const attackers = [];
+
   for (const e of aliveEnemies()) {
     if (e.poison > 0) {
       e.hp -= e.poison;
@@ -356,6 +446,7 @@ function enemyTurn() {
 
     run.hp -= e.atk;
     e.counter = e.tick + (hasRelic('clock') ? 1 : 0);
+    attackers.push({ name: e.name, atk: e.atk });
     flashEnemy(e.uid);
     Sfx.hurt();
     shake = 10;
@@ -368,8 +459,18 @@ function enemyTurn() {
 
   syncHud();
   renderEnemies();
+  if (attackers.length) flashPlayerHp();
 
   if (run.hp <= 0) { run.hp = 0; gameOver(); }
+  return attackers;
+}
+
+function flashPlayerHp() {
+  if (fastMode) return;
+  const bar = $('hpFill').parentElement;
+  bar.classList.remove('struck');
+  void bar.offsetWidth;
+  bar.classList.add('struck');
 }
 
 function winBattle() {
@@ -431,6 +532,12 @@ function takeReward(card) {
 }
 
 /* ------------------------------------------------------------- 화면 표시 */
+
+function setStatus(html, cls) {
+  if (fastMode) return;
+  $('statusText').innerHTML = html;
+  $('statusLine').className = cls || '';
+}
 
 function syncHud() {
   if (!run) return;
@@ -556,6 +663,9 @@ function stepEffects() {
   floaters = floaters.filter((f) => { f.y -= 0.7; f.life -= 0.02; return f.life > 0; });
   shake *= 0.86;
   if (shake < 0.2) shake = 0;
+  for (let i = 0; i < slotFlash.length; i++) {
+    if (slotFlash[i] > 0) slotFlash[i] = Math.max(0, slotFlash[i] - 0.035);
+  }
 }
 
 /* ------------------------------------------------------------ 렌더링 */
@@ -590,12 +700,14 @@ function drawSlots() {
   const w = W / n;
   for (let i = 0; i < n; i++) {
     const v = run ? slotValue(i) : SLOT_BASE[i];
-    const alpha = 0.08 + v * 0.05;
+    const flash = slotFlash[i] || 0;
+    const alpha = 0.08 + v * 0.05 + flash * 0.5;
     ctx.fillStyle = `rgba(255, 212, 59, ${alpha})`;
     ctx.fillRect(i * w, SLOT_TOP, w, H - SLOT_TOP);
-    ctx.strokeStyle = 'rgba(255,255,255,.07)';
+    ctx.strokeStyle = flash > 0 ? `rgba(255,212,59,${flash})` : 'rgba(255,255,255,.07)';
+    ctx.lineWidth = flash > 0 ? 2 : 1;
     ctx.strokeRect(i * w + .5, SLOT_TOP + .5, w - 1, H - SLOT_TOP - 1);
-    ctx.fillStyle = 'rgba(255, 212, 59, .85)';
+    ctx.fillStyle = flash > 0 ? '#fff' : 'rgba(255, 212, 59, .85)';
     ctx.font = '15px "Black Han Sans", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('×' + v, i * w + w / 2, SLOT_TOP + 30);
@@ -688,6 +800,16 @@ function drawBalls() {
       ctx.fill();
     });
 
+    /* 쌓인 힘만큼 둘레의 고리가 커진다 */
+    const charge = Math.min(b.damage / 3, 14);
+    if (b.damage > 0) {
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, b.r + 4 + charge, 0, Math.PI * 2);
+      ctx.strokeStyle = b.crit ? 'rgba(255,159,67,.55)' : 'rgba(255,212,59,.45)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
     ctx.beginPath();
     ctx.arc(b.x, b.y, b.r + 5, 0, Math.PI * 2);
     ctx.fillStyle = b.crit ? 'rgba(255,159,67,.3)' : 'rgba(255,255,255,.12)';
@@ -697,6 +819,19 @@ function drawBalls() {
     ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
     ctx.fillStyle = b.crit ? '#ff9f43' : o.color;
     ctx.fill();
+
+    /* 지금 이 구슬이 품고 있는 데미지 */
+    if (b.damage > 0) {
+      const label = String(b.damage);
+      const ly = b.y - b.r - charge - 9;
+      ctx.font = '16px "Black Han Sans", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = 'rgba(4,6,14,.85)';
+      ctx.strokeText(label, b.x, ly);
+      ctx.fillStyle = b.crit ? '#ffcf8a' : '#ffffff';
+      ctx.fillText(label, b.x, ly);
+    }
   }
 }
 
@@ -714,7 +849,7 @@ function drawFloaters() {
   for (const f of floaters) {
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
     ctx.fillStyle = f.color;
-    ctx.font = `${f.big ? 30 : 16}px "Black Han Sans", system-ui, sans-serif`;
+    ctx.font = `${f.big ? 30 : f.small ? 13 : 18}px "Black Han Sans", system-ui, sans-serif`;
     ctx.fillText(f.text, f.x, f.y);
   }
   ctx.globalAlpha = 1;
@@ -827,10 +962,12 @@ window.__peg = {
   aimAndFire: (angle) => { aimAngle = clamp(angle, -MAX_ANGLE, MAX_ANGLE); fire(); },
   /* 애니메이션을 기다리지 않고 한 발을 끝까지 굴린다 (밸런스 시뮬레이션용) */
   fireAndResolve: (angle) => {
+    fastMode = true;
     aimAngle = clamp(angle, -MAX_ANGLE, MAX_ANGLE);
     fire();
     let guard = 0;
     while (phase === 'shoot' && guard++ < 6000) stepShot();
+    fastMode = false;
     particles.length = 0;
     floaters.length = 0;
     return guard;
