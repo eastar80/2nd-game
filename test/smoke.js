@@ -35,7 +35,13 @@ const AUTOPLAY = (runs) => {
 
   const errors = [];
   page.on('pageerror', (e) => errors.push(String(e)));
-  page.on('console', (m) => { if (m.type() === 'error') errors.push('console: ' + m.text()); });
+  /* 구글 폰트는 있으면 쓰고 없으면 폴백이다. 네트워크가 없는 환경에서 나는
+     리소스 로드 실패는 게임 동작과 무관하므로 실패로 세지 않는다. */
+  page.on('console', (m) => {
+    if (m.type() !== 'error') return;
+    if (/Failed to load resource/.test(m.text())) return;
+    errors.push('console: ' + m.text());
+  });
 
   await page.goto(PAGE_URL);
   await page.waitForTimeout(400);

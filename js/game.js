@@ -42,6 +42,14 @@ function shuffle(arr) {
 
 const hasRelic = (id) => !!run && run.relics.includes(id);
 
+/* 시크릿 창이나 저장소가 막힌 환경에서도 게임은 그대로 돌아가야 한다 */
+function loadBest() {
+  try { return Number(localStorage.getItem(BEST_KEY) || 0); } catch (e) { return 0; }
+}
+function saveBest(floor) {
+  try { localStorage.setItem(BEST_KEY, String(floor)); } catch (e) { /* 무시 */ }
+}
+
 /* ------------------------------------------------------- 페그 보드 생성 */
 
 const PEG_AREA = { x0: 36, x1: W - 36, y0: 100, y1: 468 };
@@ -369,8 +377,7 @@ function winBattle() {
   syncHud();
   Sfx.win();
 
-  const best = Number(localStorage.getItem(BEST_KEY) || 0);
-  if (run.floor > best) localStorage.setItem(BEST_KEY, String(run.floor));
+  if (run.floor > loadBest()) saveBest(run.floor);
 
   if (run.floor >= TOTAL_FLOORS) { phase = 'victory'; showVictory(); return; }
   run.floor++;
@@ -481,7 +488,7 @@ function showOverlay(html) {
 function hideOverlay() { $('overlay').classList.add('hidden'); }
 
 function showTitle() {
-  const best = localStorage.getItem(BEST_KEY);
+  const best = loadBest();
   showOverlay(`
     <h1>튕겨라, 구슬!</h1>
     <p>구슬을 쏴서 페그를 맞히면 데미지가 쌓이고,<br>바닥 배율 구역을 지나며 적에게 꽂힌다.<br>이기면 새 구슬이나 유물을 얻어 덱을 키운다.</p>
@@ -496,17 +503,17 @@ function showReward() {
   const html = cards.map((c, i) => {
     if (c.kind === 'orb') {
       const o = ORBS[c.id];
-      return `<div class="card" data-act="reward" data-i="${i}">
+      return `<div class="card" tabindex="0" data-act="reward" data-i="${i}">
         <div class="tag">구슬</div><div class="icon">${o.icon}</div>
         <div class="ttl">${o.name}</div><div class="sub">히트당 ${o.dmg}<br>${o.desc}</div></div>`;
     }
     if (c.kind === 'relic') {
       const r = RELICS[c.id];
-      return `<div class="card" data-act="reward" data-i="${i}">
+      return `<div class="card" tabindex="0" data-act="reward" data-i="${i}">
         <div class="tag">유물</div><div class="icon">${r.icon}</div>
         <div class="ttl">${r.name}</div><div class="sub">${r.desc}</div></div>`;
     }
-    return `<div class="card" data-act="reward" data-i="${i}">
+    return `<div class="card" tabindex="0" data-act="reward" data-i="${i}">
       <div class="tag">휴식</div><div class="icon">💖</div>
       <div class="ttl">체력 회복</div><div class="sub">체력을 25 회복한다</div></div>`;
   }).join('');
@@ -589,7 +596,7 @@ function drawSlots() {
     ctx.strokeStyle = 'rgba(255,255,255,.07)';
     ctx.strokeRect(i * w + .5, SLOT_TOP + .5, w - 1, H - SLOT_TOP - 1);
     ctx.fillStyle = 'rgba(255, 212, 59, .85)';
-    ctx.font = 'bold 15px system-ui, sans-serif';
+    ctx.font = '15px "Black Han Sans", system-ui, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText('×' + v, i * w + w / 2, SLOT_TOP + 30);
   }
@@ -707,7 +714,7 @@ function drawFloaters() {
   for (const f of floaters) {
     ctx.globalAlpha = Math.max(0, Math.min(1, f.life));
     ctx.fillStyle = f.color;
-    ctx.font = `bold ${f.big ? 26 : 14}px system-ui, sans-serif`;
+    ctx.font = `${f.big ? 30 : 16}px "Black Han Sans", system-ui, sans-serif`;
     ctx.fillText(f.text, f.x, f.y);
   }
   ctx.globalAlpha = 1;
@@ -766,7 +773,22 @@ canvas.addEventListener('pointerup', (ev) => {
 });
 
 document.addEventListener('keydown', (ev) => {
+  if (phase === 'reward' || phase === 'title' || phase === 'gameover' || phase === 'victory') {
+    if (ev.key === 'Enter' && document.activeElement && document.activeElement.dataset.act) {
+      document.activeElement.click();
+    }
+    return;
+  }
   if (phase !== 'aim') return;
+
+  /* 1~3 키로 공격 대상 변경 */
+  const n = Number(ev.key);
+  if (n >= 1 && n <= 3 && battle && battle.enemies[n - 1] && !battle.enemies[n - 1].dead) {
+    battle.targetUid = battle.enemies[n - 1].uid;
+    renderEnemies();
+    return;
+  }
+
   if (ev.key === 'ArrowLeft') aimAngle = clamp(aimAngle - 0.04, -MAX_ANGLE, MAX_ANGLE);
   if (ev.key === 'ArrowRight') aimAngle = clamp(aimAngle + 0.04, -MAX_ANGLE, MAX_ANGLE);
   if (ev.key === ' ') { ev.preventDefault(); Sfx.unlock(); fire(); }
