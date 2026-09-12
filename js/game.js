@@ -44,6 +44,13 @@ function shuffle(arr) {
 
 const hasRelic = (id) => !!run && run.relics.includes(id);
 
+/* 받침 유무에 따라 '이/가' 를 고른다 */
+function subjectParticle(word) {
+  const code = word.charCodeAt(word.length - 1);
+  if (code < 0xac00 || code > 0xd7a3) return '이';
+  return (code - 0xac00) % 28 === 0 ? '가' : '이';
+}
+
 /* 시크릿 창이나 저장소가 막힌 환경에서도 게임은 그대로 돌아가야 한다 */
 function loadBest() {
   try { return Number(localStorage.getItem(BEST_KEY) || 0); } catch (e) { return 0; }
@@ -415,13 +422,22 @@ function afterImpact() {
   drawOrb();
   phase = 'aim';
 
+  const parts = [];
   if (attackers.length) {
     const total = attackers.reduce((a, b) => a + b.atk, 0);
-    const who = attackers.map((a) => a.name).join(', ');
-    setStatus(`${who}의 반격 — 체력 <b>${total}</b> 잃었다`, 'danger');
-  } else {
-    setStatus('페그를 맞힐수록 구슬에 힘이 쌓인다', '');
+    parts.push(`${attackers.map((a) => a.name).join(', ')}의 반격 — 체력 <b>${total}</b> 잃었다`);
   }
+
+  /* 다음 발이 끝나면 때리는 적은 미리 알려 준다. 먼저 처치할지 고르는 것이
+     이 게임의 전략이므로, 그 판단 재료가 화면에 있어야 한다. */
+  const soon = aliveEnemies().filter((e) => e.counter <= 1);
+  if (soon.length) {
+    const who = soon.map((e) => e.name).join(', ');
+    parts.push(`<b class="warn">${who}${subjectParticle(who)}</b> 다음 발에 공격한다`);
+  }
+  if (!parts.length) parts.push('페그를 맞힐수록 구슬에 힘이 쌓인다');
+
+  setStatus(parts.join(' · '), attackers.length ? 'danger' : soon.length ? 'warn' : '');
 }
 
 function damageEnemy(e, dmg) {
@@ -566,13 +582,17 @@ function renderEnemies() {
     const cls = ['enemy'];
     if (e.dead) cls.push('dead');
     if (e.uid === battle.targetUid) cls.push('targeted');
+    const imminent = e.counter <= 1 && !e.dead;
     return `<div class="${cls.join(' ')}" data-uid="${e.uid}">
       <div class="face">${e.face}</div>
       <div class="name">${e.name}</div>
       <div class="bar"><i style="width:${e.hp / e.maxHp * 100}%"></i></div>
       <div class="meta">
         <span>${e.hp}/${e.maxHp}</span>
-        <span>${e.poison ? `<span class="psn">☠${e.poison}</span> ` : ''}<span class="tick">⚔${e.counter}</span></span>
+        <span>${e.poison ? `<span class="psn">☠${e.poison}</span>` : ''}</span>
+      </div>
+      <div class="threat${imminent ? ' imminent' : ''}">
+        ${imminent ? '다음 발' : e.counter + '발 뒤'} <b>⚔${e.atk}</b>
       </div>
     </div>`;
   }).join('');
@@ -599,6 +619,7 @@ function showTitle() {
   showOverlay(`
     <h1>튕겨라, 구슬!</h1>
     <p>구슬을 쏴서 페그를 맞히면 데미지가 쌓이고,<br>바닥 배율 구역을 지나며 적에게 꽂힌다.<br>이기면 새 구슬이나 유물을 얻어 덱을 키운다.</p>
+    <p>적은 시간이 아니라 <b>내가 쏜 발 수</b>로 센다.<br>카드의 <b>3발 뒤 ⚔9</b> 는 세 발 뒤에 9 피해를 준다는 뜻.<br>먼저 죽일 적을 고르는 것이 이 게임의 전략이다.</p>
     ${best ? `<p class="hint">최고 기록 · ${best}층</p>` : ''}
     <button class="btn" data-act="start">런 시작</button>
     <p class="hint">마우스(또는 손가락)로 조준 · 놓으면 발사</p>
